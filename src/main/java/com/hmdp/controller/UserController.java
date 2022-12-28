@@ -3,6 +3,7 @@ package com.hmdp.controller;
 
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.User;
 import com.hmdp.entity.UserInfo;
 import com.hmdp.service.IUserInfoService;
@@ -38,7 +39,7 @@ public class UserController {
      */
     @PostMapping("code")
     public Result sendCode(@RequestParam("phone") String phone, HttpSession session) {
-        // send code and save it to session
+        // send code and save it to redis
         return userService.sendCode(phone,session);
     }
 
@@ -48,7 +49,6 @@ public class UserController {
      */
     @PostMapping("/login")
     public Result login(@RequestBody LoginFormDTO loginForm, HttpSession session){ //@requestbody 是因为前端使用 json 格式发送数据。java 对应的实体类是 LoginForm
-
         return userService.login(loginForm,session);
     }
 
@@ -62,9 +62,9 @@ public class UserController {
         return Result.fail("功能未完成");
     }
 
-    @GetMapping("/me")
+    @GetMapping("/me") //用户 "我的"界面
     public Result me(){
-        User user = UserHolder.getUser();
+        UserDTO user = UserHolder.getUser();
         return Result.ok(user);
     }
 
