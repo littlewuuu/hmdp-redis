@@ -31,7 +31,7 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
         //1.获取 token
         String token = request.getHeader("authorization");
 
-        if (token.isBlank()) {
+        if (token == null) {
             return true;
         }
         //2 基于 token 从 redis 获取
