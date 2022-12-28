@@ -1,5 +1,6 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.hmdp.dto.Result;
@@ -32,22 +33,110 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Override
     public Result queryById(Long id) {
+        /*缓存穿透解决方案
+        Shop shop = queryWithPassThrough(id);
+         */
+
+        //互斥锁解决缓存击穿
+        Shop shop = queryWithMutex(id);
+        if(shop == null){
+            return Result.fail("no such shop");
+        }
+
+        return  Result.ok(shop);
+    }
+
+    /**
+     * 互斥锁解决缓存击穿
+     */
+    public  Shop queryWithMutex(Long id){
         //1. 从 redis 里面查询
         String shopCacheJson = stringRedisTemplate.opsForValue().get(RedisConstants.CACHE_SHOP_KEY + id);
         if(StrUtil.isNotBlank(shopCacheJson)){ //2.有就转成 shop 对象直接返回
             Shop shop = JSONUtil.toBean(shopCacheJson, Shop.class);
-            return Result.ok(shop);
+            return shop;
+        }
+        //判断的命中是否是空字符串
+        if(shopCacheJson !=null){
+            //shopCacheJson =="" 说明是之前防止缓存穿透存入的"" 空值
+            return null;
+        }
+
+        //3. 没有就从数据库里面查询
+        //3.1 获取互斥锁
+        String lockKey = RedisConstants.LOCK_SHOP_KEY + id;
+        Shop shop = null;
+        try {
+            boolean isLock = tryLock(lockKey);
+            //3.2 判断是否获得互斥锁
+            if (!isLock) {
+                //3.3 失败则休眠并重试
+                Thread.sleep(50);
+                return queryWithMutex(id);
+            }
+            //3.4 获取互斥锁成功则查询数据库并写入缓存
+            shop = getById(id);
+            //模拟缓存重建时延
+            Thread.sleep(200);
+            //4. 没有返回错误
+            if(shop == null){
+                //将id 对应的空字符串(注意不是 null)写入 redis，防止缓存穿透
+                stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id,"",RedisConstants.CACHE_NULL_TTL, TimeUnit.MINUTES);
+                return null;
+            }
+            //5. 数据库里面有，需要添加到 redis 缓存里面，添加超时时间，兜底方案（缓存一致性）
+            stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id,JSONUtil.toJsonStr(shop),RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
+
+        }catch (Exception e){
+            throw new RuntimeException(e);
+        }finally {
+            //6. 释放互斥锁
+            unlock(lockKey);
+        }
+        //7. 返回店铺信息
+        return shop;
+    }
+
+    /**
+     * 缓存穿透的解决方案
+     * @param id
+     * @return
+     */
+    public Shop queryWithPassThrough(Long id){
+        //1. 从 redis 里面查询
+        String shopCacheJson = stringRedisTemplate.opsForValue().get(RedisConstants.CACHE_SHOP_KEY + id);
+        if(StrUtil.isNotBlank(shopCacheJson)){ //2.有就转成 shop 对象直接返回
+            Shop shop = JSONUtil.toBean(shopCacheJson, Shop.class);
+            return shop;
+        }
+        //判断的命中是否是空字符串
+        if(shopCacheJson !=null){
+            //shopCacheJson =="" 说明是之前防止缓存穿透存入的"" 空值
+            return null;
         }
         //3. 没有就从数据库里面查询
         Shop shop = getById(id);
         //4. 没有返回错误
         if(shop == null){
-            return Result.fail("no such shop");
+            //将id 对应的空字符串(注意不是 null)写入 redis，防止缓存穿透
+            stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id,"",RedisConstants.CACHE_NULL_TTL, TimeUnit.MINUTES);
+            return null;
         }
         //5. 数据库里面有，需要添加到 redis 缓存里面，添加超时时间，兜底方案（缓存一致性）
         stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id,JSONUtil.toJsonStr(shop),RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
         //6. 返回店铺信息
-        return  Result.ok(shop);
+        return shop;
+    }
+
+    //尝试获取互斥锁
+    private boolean tryLock(String key) { //返回值是boolean 而 flag 是 Boolean
+        Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", 10, TimeUnit.SECONDS);//添加 ttl 防止 unlock 执行不了的时候一直被锁
+        return BooleanUtil.isTrue(flag);
+    }
+
+    //删除互斥锁
+    private void unlock(String key) {
+        stringRedisTemplate.delete(key);
     }
 
     @Override
