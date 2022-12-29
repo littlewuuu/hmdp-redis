@@ -45,8 +45,9 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         if(shop == null){
             return Result.fail("no such shop");
         }
-
+        System.out.println("shop: " + shop);
         return  Result.ok(shop);
+
     }
 
     /**
@@ -55,8 +56,12 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     public  Shop queryWithMutex(Long id){
         //1. 从 redis 里面查询
         String shopCacheJson = stringRedisTemplate.opsForValue().get(RedisConstants.CACHE_SHOP_KEY + id);
+        System.out.println("redis 里面的" + shopCacheJson);
         if(StrUtil.isNotBlank(shopCacheJson)){ //2.有就转成 shop 对象直接返回
+            // TODO Json->shop出问题
             Shop shop = JSONUtil.toBean(shopCacheJson, Shop.class);
+            System.out.println("redis 里面有");
+            System.out.println("shop" + shop);
             return shop;
         }
         //判断的命中是否是空字符串

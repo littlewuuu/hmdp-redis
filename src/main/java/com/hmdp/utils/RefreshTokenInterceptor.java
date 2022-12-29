@@ -34,7 +34,7 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
         if (token == null) {
             return true;
         }
-        //2 基于 token 从 redis 获取
+        //2 基于 token 从 redis 获取当前用户的信息
         Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(RedisConstants.LOGIN_USER_KEY + token);
         if (userMap.isEmpty()) {
             return true;//

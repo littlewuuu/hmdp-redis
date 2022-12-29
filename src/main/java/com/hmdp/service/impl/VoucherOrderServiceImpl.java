@@ -1,22 +1,25 @@
 package com.hmdp.service.impl;
 
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.service.IVoucherService;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
+import org.springframework.aop.framework.AopContext;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
 
 /**
  * <p>
- *  服务实现类
+ * 服务实现类
  * </p>
  *
  * @author 虎哥
@@ -28,6 +31,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private ISeckillVoucherService seckillVoucherService;
     @Resource
     private RedisIdWorker redisIdWorker;
+
     @Override
     public Result secKillVoucher(Long voucherId) {
         // 1.查询优惠券
@@ -47,14 +51,34 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             // 库存不足
             return Result.fail("库存不足！");
         }
+
+        Long userid = UserHolder.getUser().getId();
+        //悲观锁解决一人一单
+        synchronized (userid.toString().intern()) { //*********************** 对同一个用户 id 加上锁
+            IVoucherOrderService proxy =(IVoucherOrderService) AopContext.currentProxy();//获取代理对象
+            return proxy.createVoucherOrder(voucherId);
+        }
+    }
+
+    @Transactional //注意事务，事务提交以后才能释放锁
+    public Result createVoucherOrder(Long voucherId) {
+        //一人一单
+        Long userid = UserHolder.getUser().getId();
+        int count = query().eq("user_id", userid).eq("voucher_id", voucherId).count();
+        if (count > 0) {
+            return Result.fail("already bought");
+        }
         //5，扣减库存
         boolean success = seckillVoucherService.update()
                 .setSql("stock= stock -1")
-                .eq("voucher_id", voucherId).update();
+                .eq("voucher_id", voucherId)
+                .gt("stock", 0)//乐观锁解决超卖问题, eq("stock",voucher.getStock());
+                .update();
         if (!success) {
             //扣减库存
             return Result.fail("库存不足！");
         }
+
         //6.创建订单
         VoucherOrder voucherOrder = new VoucherOrder();
         // 6.1.订单id
@@ -68,6 +92,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         save(voucherOrder);
 
         return Result.ok(orderId);
-
     }
+
 }

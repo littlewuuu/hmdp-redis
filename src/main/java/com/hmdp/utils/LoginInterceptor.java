@@ -17,6 +17,7 @@ public class LoginInterceptor implements HandlerInterceptor {
         //判断是否要拦截：根据 threadlocal 里面是否有 user
         if(UserHolder.getUser() == null){
             response.setStatus(401);
+            System.out.println("已拦截");
             return false;
         }
         return true;
