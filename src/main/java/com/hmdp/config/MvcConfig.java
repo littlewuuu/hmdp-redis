@@ -20,7 +20,7 @@ public class MvcConfig implements WebMvcConfigurer {
 
         // 注册登录拦截器
         registry.addInterceptor(new LoginInterceptor())
-                .excludePathPatterns(
+                .excludePathPatterns( //有些资源是不需要拦截的
                         "/shop/**",
                         "/voucher/**",
                         "/shop-type/**",

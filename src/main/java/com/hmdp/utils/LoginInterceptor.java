@@ -1,22 +1,18 @@
 package com.hmdp.utils;
 
-import cn.hutool.core.bean.BeanUtil;
-import com.hmdp.dto.UserDTO;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 public class LoginInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         //判断是否要拦截：根据 threadlocal 里面是否有 user
-        if(UserHolder.getUser() == null){
-            response.setStatus(401);
+        //在上一层拦截器 RefreshTokenInterceptor 已经把 User 放到 threadlocal 里面了（满足条件的话）
+        if (UserHolder.getUser() == null) {
+            response.setStatus(401); //401 未授权
             System.out.println("已拦截");
             return false;
         }
